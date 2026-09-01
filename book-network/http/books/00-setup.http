@@ -1,0 +1,275 @@
+### ==========================================================
+### 00 — SETUP: authenticate 3 users, create 9 books (3 each)
+### RUN THIS FILE FIRST, TOP TO BOTTOM.
+### Assumes /auth/register + /auth/activate-account already done.
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### Authenticate User1
+# @name authUser1
+POST {{baseUrl}}/auth/authenticate
+Content-Type: application/json
+
+{
+  "email": "user1@email.ke",
+  "password": "password123"
+}
+
+> {%
+    client.test("User1 authenticated", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(!!response.body.token, "Expected a token in response body");
+    });
+    client.global.set("token_user1", response.body.token);
+%}
+
+### Authenticate User2
+# @name authUser2
+POST {{baseUrl}}/auth/authenticate
+Content-Type: application/json
+
+{
+  "email": "user2@email.ke",
+  "password": "password123"
+}
+
+> {%
+    client.test("User2 authenticated", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(!!response.body.token, "Expected a token in response body");
+    });
+    client.global.set("token_user2", response.body.token);
+%}
+
+### Authenticate User3
+# @name authUser3
+POST {{baseUrl}}/auth/authenticate
+Content-Type: application/json
+
+{
+  "email": "user3@email.ke",
+  "password": "password123"
+}
+
+> {%
+    client.test("User3 authenticated", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(!!response.body.token, "Expected a token in response body");
+    });
+    client.global.set("token_user3", response.body.token);
+%}
+
+
+### --- User1's books: Book1, Book2 (shareable), Book3 (NOT shareable) ---
+
+# @name createBook1
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Clean Code",
+  "authorName": "Robert C. Martin",
+  "isbn": "978-0132350884",
+  "synopsis": "A handbook of agile software craftsmanship.",
+  "shareable": true
+}
+
+> {%
+    client.test("Book1 created", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book1_id", response.body);
+%}
+
+### 
+# @name createBook2
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Effective Java",
+  "authorName": "Joshua Bloch",
+  "isbn": "978-0134685991",
+  "synopsis": "Best practices for the Java platform.",
+  "shareable": true
+}
+
+> {%
+    client.test("Book2 created", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book2_id", response.body);
+%}
+
+###
+# @name createBook3
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Refactoring",
+  "authorName": "Martin Fowler",
+  "isbn": "978-0134757599",
+  "synopsis": "Improving the design of existing code.",
+  "shareable": false
+}
+
+> {%
+    client.test("Book3 created (non-shareable)", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book3_id", response.body);
+%}
+// Book3 is deliberately non-shareable — used to test borrow rejection later.
+
+
+### --- User2's books: Book4, Book5 (shareable), Book6 (gets archived later) ---
+
+# @name createBook4
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user2}}
+Content-Type: application/json
+
+{
+  "title": "Domain-Driven Design",
+  "authorName": "Eric Evans",
+  "isbn": "978-0321125217",
+  "synopsis": "Tackling complexity in the heart of software.",
+  "shareable": true
+}
+
+> {%
+    client.test("Book4 created", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book4_id", response.body);
+%}
+
+###
+# @name createBook5
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user2}}
+Content-Type: application/json
+
+{
+  "title": "Design Patterns",
+  "authorName": "Gamma, Helm, Johnson, Vlissides",
+  "isbn": "978-0201633610",
+  "synopsis": "Elements of reusable object-oriented software.",
+  "shareable": true
+}
+
+> {%
+    client.test("Book5 created", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book5_id", response.body);
+%}
+
+###
+# @name createBook6
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user2}}
+Content-Type: application/json
+
+{
+  "title": "The Pragmatic Programmer",
+  "authorName": "Hunt & Thomas",
+  "isbn": "978-0135957059",
+  "synopsis": "From journeyman to master.",
+  "shareable": true
+}
+
+> {%
+    client.test("Book6 created", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book6_id", response.body);
+%}
+// Book6 gets archived in 08-toggle-archived.http and reused in 04-borrow-book.http.
+
+
+### --- User3's books: Book7, Book8, Book9 (all shareable) ---
+
+# @name createBook7
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user3}}
+Content-Type: application/json
+
+{
+  "title": "Spring in Action",
+  "authorName": "Craig Walls",
+  "isbn": "978-1617294945",
+  "synopsis": "A guide to the Spring Framework.",
+  "shareable": true
+}
+
+> {%
+    client.test("Book7 created", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book7_id", response.body);
+%}
+
+###
+# @name createBook8
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user3}}
+Content-Type: application/json
+
+{
+  "title": "Java Concurrency in Practice",
+  "authorName": "Brian Goetz",
+  "isbn": "978-0321349606",
+  "synopsis": "Concurrent programming in Java.",
+  "shareable": true
+}
+
+> {%
+    client.test("Book8 created", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book8_id", response.body);
+%}
+
+###
+# @name createBook9
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user3}}
+Content-Type: application/json
+
+{
+  "title": "Head First Design Patterns",
+  "authorName": "Freeman & Robson",
+  "isbn": "978-1492078005",
+  "synopsis": "A brain-friendly guide.",
+  "shareable": true
+}
+
+> {%
+    client.test("Book9 created", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book9_id", response.body);
+%}
+
+### Sanity check — dump all captured globals so you can eyeball them once
+# @name sanityCheckDump
+GET {{baseUrl}}/books/{{book1_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Setup sanity check", function() {
+        client.assert(response.status === 200, "Setup failed — Book1 not retrievable. Check tokens/ids above.");
+        client.log("token_user1=" + client.global.get("token_user1"));
+        client.log("token_user2=" + client.global.get("token_user2"));
+        client.log("token_user3=" + client.global.get("token_user3"));
+        for (let i = 1; i <= 9; i++) {
+            client.log("book" + i + "_id=" + client.global.get("book" + i + "_id"));
+        }
+    });
+%}

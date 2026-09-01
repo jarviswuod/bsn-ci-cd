@@ -1,0 +1,25 @@
+### Base URL
+@host = http://localhost:8080
+
+### Register new user
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Jarvis",
+  "lastName": "Wuod",
+  "email": "jarvisochieng2018@gmail.com",
+  "password": "password"
+}
+
+### Authenticate User
+POST {{host}}/api/v1/auth/authenticate
+Content-Type: application/json
+
+{
+  "email": "jarvisochieng2018@gmail.com",
+  "password": "password"
+}
+
+### Activate Account
+GET {{host}}/api/v1/auth/activate-account?token=123456

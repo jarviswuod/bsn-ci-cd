@@ -1,0 +1,101 @@
+### ==========================================================
+### 06 — PATCH /books/borrow/return/approve/{bookId}
+### Requires: 00-setup.http, 04-borrow-book.http, 05-return-book.http already run
+### (needs Book4 borrowed by User3 then returned by User3)
+###
+### THIS FILE IS PRIMARILY A BUG-DEMONSTRATION FILE.
+### Reading the code: approveReturnBorrowedBook() throws
+### OperationNotPermittedException if the caller IS the book's owner —
+### but then looks up the transaction via findByBookIdAndOwnerId(bookId, caller.id),
+### which only ever matches when the caller IS the owner. That means:
+###   - the owner gets blocked before reaching the lookup
+###   - anyone else reaches the lookup but never matches it
+### i.e. there may be NO caller for whom this endpoint can currently succeed.
+### The two tests below are written to PROVE that either way, so you have a
+### concrete before/after when you patch it (likely: query should be
+### findByBookIdAndUserId + owner-id check reversed, or similar).
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### Owner (User2) tries to approve the return of their own Book4
+# @name approveReturnByOwner
+PATCH {{baseUrl}}/books/borrow/return/approve/{{book4_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("BUG CHECK: owner blocked by the 'cannot borrow/return own book' guard", function() {
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+        // Expected today: 400/403 "You cannot borrow or return your own book"
+        // Expected after a fix: 200, since the owner is exactly who SHOULD approve a return.
+        // No hard assert — flip this to `client.assert(response.status === 200, ...)` once fixed.
+    });
+%}
+
+### Borrower (User3) tries to approve their own return of Book4
+# @name approveReturnByBorrower
+PATCH {{baseUrl}}/books/borrow/return/approve/{{book4_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("BUG CHECK: borrower passes the owner guard but the owner-scoped lookup won't match them", function() {
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+        // Expected today: 400/403 "The book is not returned yet. You cannot approve it's return"
+        // — even though it WAS returned in 05-return-book.http. That message itself
+        // is misleading if this is what's actually happening; confirm via logs/debugger.
+    });
+%}
+
+### Unrelated third party (User1, not owner, not borrower) tries to approve
+# @name approveReturnByUnrelatedUser
+PATCH {{baseUrl}}/books/borrow/return/approve/{{book4_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("TIGHTEN ME: unrelated user cannot approve a return they have no stake in", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### Approve a return for a book that was never borrowed/returned at all
+# @name approveReturnNeverBorrowed
+PATCH {{baseUrl}}/books/borrow/return/approve/{{book9_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("TIGHTEN ME: approving a return for a book with no transaction history is rejected", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### Non-existent book
+# @name approveReturnNotFound
+PATCH {{baseUrl}}/books/borrow/return/approve/999999
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("TIGHTEN ME: approving a return for a non-existent book returns an error", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### No auth
+# @name approveReturnNoAuth
+PATCH {{baseUrl}}/books/borrow/return/approve/{{book4_id}}
+
+> {%
+    client.test("Approve without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}
+
+### --- AFTER YOU FIX THE BUG: uncomment and use this as your regression test ---
+# # @name approveReturnAfterFix
+# PATCH {{baseUrl}}/books/borrow/return/approve/{{book4_id}}
+# Authorization: Bearer {{token_user2}}
+#
+# > {%
+#     client.test("Owner can now successfully approve the return", function() {
+#         client.assert(response.status === 200, "Expected 200, got " + response.status);
+#     });
+# %}

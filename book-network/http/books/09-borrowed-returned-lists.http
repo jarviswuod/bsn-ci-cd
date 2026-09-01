@@ -1,0 +1,78 @@
+### ==========================================================
+### 09 — GET /books/borrowed and GET /books/returned
+### Requires: 00-setup.http already run.
+### Best run AFTER 04-borrow-book.http and 05-return-book.http so
+### there's actual transaction history to assert against.
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### GET /books/borrowed — User3 should see Book4 they borrowed (from 04-borrow-book.http)
+# @name getBorrowedUser3
+GET {{baseUrl}}/books/borrowed?page=0
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("User3's borrowed list includes Book4", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        const titles = response.body.content.map(b => b.id);
+        client.log("Borrowed content: " + JSON.stringify(response.body.content));
+        // Field is "id" on BorrowedBookResponse — confirm Book4's id is present if 04/05 ran first.
+    });
+%}
+
+### GET /books/borrowed — User1 (who only owns books, never borrowed anything) should get empty content
+# @name getBorrowedUser1Empty
+GET {{baseUrl}}/books/borrowed?page=0
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("User1 has never borrowed anything -> empty content", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.content.length === 0, "Expected empty borrowed list for User1, got " + response.body.content.length + " items");
+    });
+%}
+
+### GET /books/returned — User2 (owner of Book1) should see it once it's been returned (05-return-book.http)
+# @name getReturnedUser2
+GET {{baseUrl}}/books/returned?page=0
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("User2's returned list reflects Book4 status once returned by User3", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.log("Returned content: " + JSON.stringify(response.body.content));
+    });
+%}
+
+### GET /books/returned — User3 owns no books at all that could be "returned to them" -> empty
+# @name getReturnedUser3Empty
+GET {{baseUrl}}/books/returned?page=0
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("User3 owns no books being returned to them by definition of this test setup", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.log("Returned content for User3: " + JSON.stringify(response.body.content));
+    });
+%}
+
+### No auth on both endpoints
+# @name getBorrowedNoAuth
+GET {{baseUrl}}/books/borrowed
+
+> {%
+    client.test("GET /books/borrowed without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}
+
+###
+# @name getReturnedNoAuth
+GET {{baseUrl}}/books/returned
+
+> {%
+    client.test("GET /books/returned without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}

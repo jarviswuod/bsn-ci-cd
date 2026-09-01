@@ -1,0 +1,136 @@
+### ==========================================================
+### 03 — GET /books and GET /books/owner
+### Requires: 00-setup.http already run
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### GET /books — default page, happy path
+# @name getAllBooksDefault
+GET {{baseUrl}}/books?page=0
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("GET /books default page returns 200 with a content array", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(Array.isArray(response.body.content), "Expected a content array in PageResponse");
+    });
+%}
+
+### GET /books excludes the caller's OWN books (findAllDisplayableBooks) — verify none of User1's own ids appear
+# @name getAllBooksExcludesOwn
+GET {{baseUrl}}/books?page=0
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("GET /books should not include the caller's own books", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        const ids = response.body.content.map(b => b.id);
+        const ownIds = [client.global.get("book1_id"), client.global.get("book2_id"), client.global.get("book3_id")];
+        const leaked = ownIds.filter(id => ids.includes(id));
+        client.assert(leaked.length === 0, "User1's own book(s) leaked into GET /books: " + JSON.stringify(leaked));
+    });
+%}
+
+### GET /books excludes non-shareable books (Book3) even for OTHER users
+# @name getAllBooksExcludesNonShareable
+GET {{baseUrl}}/books?page=0&size=50
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("GET /books should not include non-shareable Book3", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        const ids = response.body.content.map(b => b.id);
+        client.assert(!ids.includes(client.global.get("book3_id")), "Non-shareable Book3 leaked into displayable list for User2");
+    });
+%}
+
+### BUG CHECK — pagination param collision. "size" is bound to the SAME request
+### param name as "page" in the controller (@RequestParam(name = "page") twice).
+### Sending size=1 should NOT actually limit the page to 1 item if this bug is present.
+# @name getAllBooksSizeBug
+GET {{baseUrl}}/books?page=0&size=1
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("BUG CHECK: size param likely ignored due to duplicate @RequestParam name", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.log("Requested size=1, actual pageSize field: " + response.body.pageSize + ", content length: " + response.body.content.length);
+        // If pageSize/content.length isn't 1, the bug is confirmed live.
+    });
+%}
+
+### Negative page number
+# @name getAllBooksNegativePage
+GET {{baseUrl}}/books?page=-1
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Negative page number handled without a server error", function() {
+        client.assert(response.status === 200 || response.status === 400, "Expected 200 or 400, got " + response.status);
+    });
+%}
+
+### Page far beyond available data — should return empty content, not error
+# @name getAllBooksBeyondRange
+GET {{baseUrl}}/books?page=999
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Out-of-range page returns empty content, not an error", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.content.length === 0, "Expected empty content for an out-of-range page");
+        client.assert(response.body.last === true, "Expected 'last' flag to be true");
+    });
+%}
+
+### No Authorization header
+# @name getAllBooksNoAuth
+GET {{baseUrl}}/books
+
+> {%
+    client.test("GET /books without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}
+
+
+### --- GET /books/owner ---
+
+### Happy path — User1 sees exactly their 3 books, INCLUDING the non-shareable one
+# @name getOwnerBooksUser1
+GET {{baseUrl}}/books/owner?page=0
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("GET /books/owner returns exactly User1's own books", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        const ids = response.body.content.map(b => b.id);
+        const expected = [client.global.get("book1_id"), client.global.get("book2_id"), client.global.get("book3_id")];
+        expected.forEach(id => client.assert(ids.includes(id), "Expected book id " + id + " in owner's own list"));
+    });
+%}
+
+### Non-shareable Book3 should appear here even though it's hidden from GET /books
+# @name getOwnerBooksIncludesNonShareable
+GET {{baseUrl}}/books/owner?page=0
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Owner's own non-shareable book is visible to them via /owner", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        const ids = response.body.content.map(b => b.id);
+        client.assert(ids.includes(client.global.get("book3_id")), "Expected non-shareable Book3 to be visible to its own owner");
+    });
+%}
+
+### User with no books at all — not applicable here since all 3 seeded users own books,
+### documented as a manual case: register a 4th user and confirm empty content + no error.
+# @name getOwnerBooksNoAuth
+GET {{baseUrl}}/books/owner
+
+> {%
+    client.test("GET /books/owner without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}

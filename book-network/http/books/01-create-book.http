@@ -1,0 +1,307 @@
+### ==========================================================
+### 01 — POST /books (create)
+### Requires: 00-setup.http already run (token_user1, book1_id)
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### Happy path — extra book beyond the setup 9, to confirm create still works in isolation
+# @name createHappyPath
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Test Driven Development",
+  "authorName": "Kent Beck",
+  "isbn": "978-0321146533",
+  "synopsis": "By example.",
+  "shareable": true
+}
+
+> {%
+    client.test("Create book happy path returns 200 + numeric id", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(typeof response.body === "number", "Expected response body to be a numeric id, got " + typeof response.body);
+    });
+    client.global.set("tddBook_id", response.body);
+%}
+
+### No Authorization header at all
+# @name createNoAuth
+POST {{baseUrl}}/books
+Content-Type: application/json
+
+{
+  "title": "No Auth Book",
+  "authorName": "Nobody",
+  "isbn": "000",
+  "synopsis": "test",
+  "shareable": true
+}
+
+> {%
+    client.test("Create without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}
+
+### Garbage/expired token
+# @name createBadToken
+POST {{baseUrl}}/books
+Authorization: Bearer this.is.not.a.real.jwt
+Content-Type: application/json
+
+{
+  "title": "Bad Token Book",
+  "authorName": "Nobody",
+  "isbn": "000",
+  "synopsis": "test",
+  "shareable": true
+}
+
+> {%
+    client.test("Create with malformed token is rejected", function() {
+        client.assert(response.status === 401 || response.status === 403, "Expected 401 or 403, got " + response.status);
+    });
+%}
+
+### Missing title (empty string)
+# @name createMissingTitle
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "",
+  "authorName": "Someone",
+  "isbn": "111",
+  "synopsis": "test",
+  "shareable": true
+}
+
+> {%
+    client.test("Empty title rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### title field entirely absent from JSON (not just empty)
+# @name createNullTitle
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "authorName": "Someone",
+  "isbn": "112",
+  "synopsis": "test",
+  "shareable": true
+}
+
+> {%
+    client.test("Missing title field rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### Whitespace-only title — EDGE CASE: @NotEmpty does not trim, so " " may pass validation
+# @name createWhitespaceTitle
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "   ",
+  "authorName": "Someone",
+  "isbn": "113",
+  "synopsis": "test",
+  "shareable": true
+}
+
+> {%
+    client.test("TIGHTEN ME: whitespace-only title — currently likely accepted (bean validation gap)", function() {
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+        // No hard assert here on purpose — this documents a validation gap.
+        // If you add @NotBlank instead of @NotEmpty, flip this to assert 400.
+    });
+%}
+
+### Missing authorName
+# @name createMissingAuthor
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Some Title",
+  "authorName": "",
+  "isbn": "114",
+  "synopsis": "test",
+  "shareable": true
+}
+
+> {%
+    client.test("Empty authorName rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### Missing isbn
+# @name createMissingIsbn
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Some Title",
+  "authorName": "Someone",
+  "isbn": "",
+  "synopsis": "test",
+  "shareable": true
+}
+
+> {%
+    client.test("Empty isbn rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### Missing synopsis
+# @name createMissingSynopsis
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Some Title",
+  "authorName": "Someone",
+  "isbn": "115",
+  "synopsis": "",
+  "shareable": true
+}
+
+> {%
+    client.test("Empty synopsis rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### All four fields missing at once — confirm all 4 error codes surface, not just the first
+# @name createAllFieldsMissing
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "",
+  "authorName": "",
+  "isbn": "",
+  "synopsis": "",
+  "shareable": true
+}
+
+> {%
+    client.test("All-empty payload rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+        client.log("Body: " + JSON.stringify(response.body));
+        // Manually confirm the error body lists all 4 codes (100/101/102/103), not just one.
+    });
+%}
+
+### shareable omitted entirely — primitive boolean should default to false, not error
+# @name createShareableOmitted
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Shareable Omitted Book",
+  "authorName": "Someone",
+  "isbn": "116",
+  "synopsis": "test"
+}
+
+> {%
+    client.test("Omitted shareable defaults without error", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("shareableOmittedBook_id", response.body);
+%}
+
+### Duplicate isbn — no @Column(unique) on isbn in the entity, so this should succeed. Documents the gap.
+# @name createDuplicateIsbn
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Duplicate ISBN Book",
+  "authorName": "Someone",
+  "isbn": "978-0132350884",
+  "synopsis": "Same ISBN as Book1 on purpose.",
+  "shareable": true
+}
+
+> {%
+    client.test("TIGHTEN ME: duplicate isbn currently allowed — flag if you add a unique constraint", function() {
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### BUG CHECK — client-supplied id matching an existing book. JPA save() on an entity
+### with an existing id performs an UPDATE, not an INSERT. Confirm afterwards with 02-get-book-by-id.http.
+# @name createWithExistingId
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "id": {{book1_id}},
+  "title": "OVERWRITTEN TITLE",
+  "authorName": "Robert C. Martin",
+  "isbn": "978-0132350884",
+  "synopsis": "Overwrite test.",
+  "shareable": true
+}
+
+> {%
+    client.test("BUG CHECK: create with existing id — inspect whether Book1 got overwritten", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body === client.global.get("book1_id"), "Expected returned id to equal book1_id (confirms it updated, not inserted)");
+    });
+%}
+
+### Verify the overwrite actually happened — run right after the request above
+# @name verifyOverwrite
+GET {{baseUrl}}/books/{{book1_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("BUG CHECK: Book1 title should now read OVERWRITTEN TITLE if the app is vulnerable to id-spoofing on create", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.log("Book1 title is now: " + response.body.title);
+        // If this prints "OVERWRITTEN TITLE", any authenticated user could overwrite
+        // ANY book by guessing/enumerating its id on POST /books — worth a fix.
+    });
+%}
+
+### Very long synopsis (10k chars) — confirm no silent truncation or 500 from column length
+# @name createLongSynopsis
+POST {{baseUrl}}/books
+Authorization: Bearer {{token_user1}}
+Content-Type: application/json
+
+{
+  "title": "Long Synopsis Book",
+  "authorName": "Someone",
+  "isbn": "117",
+  "synopsis": "{{$random.alphabetic(10000)}}",
+  "shareable": true
+}
+
+> {%
+    client.test("Long synopsis handled without server error", function() {
+        client.assert(response.status === 200 || response.status === 400, "Expected 200 or 400, got " + response.status + " (500 = unhandled column-length issue)");
+    });
+%}

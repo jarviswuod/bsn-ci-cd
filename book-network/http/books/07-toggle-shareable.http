@@ -1,0 +1,98 @@
+### ==========================================================
+### 07 — PATCH /books/shareable/{bookId}
+### Requires: 00-setup.http already run
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### Happy path — owner toggles. Book2 starts shareable=true, so this flips it to false.
+# @name toggleShareableOwnerOff
+PATCH {{baseUrl}}/books/shareable/{{book2_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Owner toggles Book2 shareable -> false", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body === client.global.get("book2_id"), "Expected the same book id back");
+    });
+%}
+
+### Confirm the flip actually happened
+# @name verifyToggleOff
+GET {{baseUrl}}/books/{{book2_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Book2 is now shareable=false", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.shareable === false, "Expected shareable=false after toggle, got " + response.body.shareable);
+    });
+%}
+
+### Toggle back — confirm it's a true toggle, not a one-way flag
+# @name toggleShareableOwnerOn
+PATCH {{baseUrl}}/books/shareable/{{book2_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Owner toggles Book2 shareable back -> true", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+%}
+
+###
+# @name verifyToggleOn
+GET {{baseUrl}}/books/{{book2_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Book2 is back to shareable=true (confirms true toggle behavior)", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.shareable === true, "Expected shareable=true after second toggle, got " + response.body.shareable);
+    });
+%}
+
+### Non-owner tries to toggle
+# @name toggleShareableNonOwner
+PATCH {{baseUrl}}/books/shareable/{{book2_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("TIGHTEN ME: non-owner cannot toggle another user's shareable flag", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Confirm the non-owner attempt above did NOT actually change anything
+# @name verifyNonOwnerToggleHadNoEffect
+GET {{baseUrl}}/books/{{book2_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("Book2 shareable flag unchanged after rejected non-owner toggle attempt", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.shareable === true, "Expected shareable to remain true — non-owner toggle should NOT have applied");
+    });
+%}
+
+### Non-existent book
+# @name toggleShareableNotFound
+PATCH {{baseUrl}}/books/shareable/999999
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("TIGHTEN ME: toggling shareable on a non-existent book returns an error", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### No auth
+# @name toggleShareableNoAuth
+PATCH {{baseUrl}}/books/shareable/{{book2_id}}
+
+> {%
+    client.test("Toggle shareable without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}

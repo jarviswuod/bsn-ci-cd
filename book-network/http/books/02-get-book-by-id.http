@@ -1,0 +1,101 @@
+### ==========================================================
+### 02 — GET /books/{bookId}
+### Requires: 00-setup.http already run
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### Happy path — any authenticated user can fetch a shareable book
+# @name getBook1
+GET {{baseUrl}}/books/{{book1_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("Get Book1 returns 200 with expected fields", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.title !== undefined, "Expected a title field");
+        client.assert(response.body.isbn !== undefined, "Expected an isbn field");
+    });
+%}
+
+### Non-existent id
+# @name getBookNotFound
+GET {{baseUrl}}/books/999999
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("TIGHTEN ME: non-existent id should be 404 (EntityNotFoundException — confirm your @ControllerAdvice mapping)", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Actual status: " + response.status + " body: " + JSON.stringify(response.body));
+        // If this comes back 500, EntityNotFoundException isn't mapped anywhere — worth adding a handler.
+    });
+%}
+
+### Zero as id
+# @name getBookZeroId
+GET {{baseUrl}}/books/0
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("Zero id treated as not found, not a server error", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### Negative id
+# @name getBookNegativeId
+GET {{baseUrl}}/books/-1
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("Negative id treated as not found, not a server error", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### Non-numeric id — Spring path-variable type conversion failure
+# @name getBookBadIdType
+GET {{baseUrl}}/books/abc
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("Non-numeric id rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### No Authorization header
+# @name getBookNoAuth
+GET {{baseUrl}}/books/{{book1_id}}
+
+> {%
+    client.test("Get without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}
+
+### PRIVACY EDGE CASE — findById has no owner/shareable check. Any authenticated
+### user can fetch User1's NON-shareable Book3 by id even though it'd never show
+### up in their GET /books list. Confirm whether this is intended.
+# @name getNonShareableBookByOtherUser
+GET {{baseUrl}}/books/{{book3_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("BUG/DESIGN CHECK: non-owner can view a private non-shareable book by direct id lookup", function() {
+        client.assert(response.status === 200, "If this is 200, User3 can see User1's private Book3 — confirm this is intended, not a leak.");
+        client.log("Body: " + JSON.stringify(response.body));
+    });
+%}
+
+### PRIVACY EDGE CASE — same, but for an archived book (Book6, archived in 08-toggle-archived.http)
+### Run 08-toggle-archived.http first for this one to be meaningful.
+# @name getArchivedBookByOtherUser
+GET {{baseUrl}}/books/{{book6_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("BUG/DESIGN CHECK: non-owner can view an archived book by direct id lookup", function() {
+        client.log("Status: " + response.status + " archived=" + response.body.archived);
+    });
+%}

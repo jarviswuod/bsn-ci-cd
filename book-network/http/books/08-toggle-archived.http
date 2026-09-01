@@ -1,0 +1,111 @@
+### ==========================================================
+### 08 — PATCH /books/archived/{bookId}
+### Requires: 00-setup.http already run
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### Happy path — owner archives their own book
+# @name toggleArchivedOwnerOn
+PATCH {{baseUrl}}/books/archived/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("Owner archives Book7 -> true", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body === client.global.get("book7_id"), "Expected the same book id back");
+    });
+%}
+
+### Confirm it applied
+# @name verifyArchivedOn
+GET {{baseUrl}}/books/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("Book7 is now archived=true", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.archived === true, "Expected archived=true after toggle, got " + response.body.archived);
+    });
+%}
+
+### An archived book should disappear from the public GET /books listing
+# @name verifyArchivedBookHiddenFromPublicList
+GET {{baseUrl}}/books?page=0&size=50
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("TIGHTEN ME: archived Book7 should not appear in GET /books for other users", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        const ids = response.body.content.map(b => b.id);
+        client.assert(!ids.includes(client.global.get("book7_id")), "Archived Book7 leaked into the displayable list");
+    });
+%}
+
+### Toggle back to unarchived — confirm it's a true toggle
+# @name toggleArchivedOwnerOff
+PATCH {{baseUrl}}/books/archived/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("Owner unarchives Book7 -> false", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+%}
+
+###
+# @name verifyArchivedOff
+GET {{baseUrl}}/books/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("Book7 is back to archived=false", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.archived === false, "Expected archived=false after second toggle, got " + response.body.archived);
+    });
+%}
+
+### Non-owner tries to archive someone else's book
+# @name toggleArchivedNonOwner
+PATCH {{baseUrl}}/books/archived/{{book7_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("TIGHTEN ME: non-owner cannot archive another user's book", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Confirm the non-owner attempt had no effect
+# @name verifyNonOwnerArchiveHadNoEffect
+GET {{baseUrl}}/books/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("Book7 archived flag unchanged after rejected non-owner attempt", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.archived === false, "Expected archived to remain false — non-owner toggle should NOT have applied");
+    });
+%}
+
+### Non-existent book
+# @name toggleArchivedNotFound
+PATCH {{baseUrl}}/books/archived/999999
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("TIGHTEN ME: archiving a non-existent book returns an error", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### No auth
+# @name toggleArchivedNoAuth
+PATCH {{baseUrl}}/books/archived/{{book7_id}}
+
+> {%
+    client.test("Toggle archived without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}

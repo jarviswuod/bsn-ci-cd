@@ -1,0 +1,215 @@
+### ==========================================================
+### 10 — POST /books/cover/{bookId}  (multipart/form-data)
+### Requires: 00-setup.http already run
+###
+### BEFORE RUNNING: put a real small image file named cover.jpg
+### next to this .http file (or change the `< ./cover.jpg` path below
+### to point at one). IntelliJ resolves relative paths from this file's
+### own directory.
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### Happy path — owner uploads a cover for their own book
+# @name uploadCoverHappyPath
+POST {{baseUrl}}/books/cover/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="cover.jpg"
+Content-Type: image/jpeg
+
+< ./cover.jpg
+--WebAppBoundary--
+
+> {%
+    client.test("Owner uploads a cover successfully", function() {
+        client.assert(response.status === 202, "Expected 202 Accepted, got " + response.status);
+    });
+%}
+
+### Confirm the cover actually got attached
+# @name verifyCoverAttached
+GET {{baseUrl}}/books/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("Book7 now has cover bytes present", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body.cover !== null && response.body.cover !== undefined, "Expected a non-null cover field after upload");
+    });
+%}
+
+### Non-owner tries to upload a cover for someone else's book
+# @name uploadCoverNonOwner
+POST {{baseUrl}}/books/cover/{{book7_id}}
+Authorization: Bearer {{token_user1}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="cover.jpg"
+Content-Type: image/jpeg
+
+< ./cover.jpg
+--WebAppBoundary--
+
+> {%
+    client.test("DESIGN CHECK: uploadBookCoverPicture has NO owner check in the service method — confirm whether this succeeds", function() {
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+        // Reading the code: uploadBookCoverPicture() checks archived/shareable but
+        // never compares book.getOwner().getId() to the caller, unlike every other
+        // mutating endpoint. If this returns 202, ANY authenticated user can overwrite
+        // ANY other user's book cover. Worth a fix if that's not intended.
+    });
+%}
+
+### Missing file part entirely
+# @name uploadCoverMissingFile
+POST {{baseUrl}}/books/cover/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary--
+
+> {%
+    client.test("Missing file part rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### Wrong field name (should be "file", sending "cover" instead)
+# @name uploadCoverWrongFieldName
+POST {{baseUrl}}/books/cover/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="cover"; filename="cover.jpg"
+Content-Type: image/jpeg
+
+< ./cover.jpg
+--WebAppBoundary--
+
+> {%
+    client.test("Wrong multipart field name rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### Non-image file (e.g. a .txt) — service doesn't appear to validate content type, so document actual behavior
+# @name uploadCoverNonImageFile
+POST {{baseUrl}}/books/cover/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="notes.txt"
+Content-Type: text/plain
+
+This is not an image.
+--WebAppBoundary--
+
+> {%
+    client.test("TIGHTEN ME: non-image file upload — confirm whether it's accepted (no content-type validation seen in code)", function() {
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Empty file (0 bytes)
+# @name uploadCoverEmptyFile
+POST {{baseUrl}}/books/cover/{{book7_id}}
+Authorization: Bearer {{token_user3}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="empty.jpg"
+Content-Type: image/jpeg
+
+
+--WebAppBoundary--
+
+> {%
+    client.test("TIGHTEN ME: 0-byte file upload — confirm expected behavior (accept vs reject)", function() {
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Upload for an archived book — error message will read "cannot be borrowed..." (copy-pasted, wrong wording)
+# @name uploadCoverArchivedBook
+PATCH {{baseUrl}}/books/archived/{{book9_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("Archive Book9 first (setup step)", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+%}
+
+###
+# @name uploadCoverToArchivedBook
+POST {{baseUrl}}/books/cover/{{book9_id}}
+Authorization: Bearer {{token_user3}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="cover.jpg"
+Content-Type: image/jpeg
+
+< ./cover.jpg
+--WebAppBoundary--
+
+> {%
+    client.test("TIGHTEN ME: cover upload rejected for an archived book (check the error WORDING too — it currently says 'cannot be borrowed', which is misleading for this endpoint)", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Cleanup — unarchive Book9
+# @name cleanupUnarchiveBook9
+PATCH {{baseUrl}}/books/archived/{{book9_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("Book9 restored to unarchived (cleanup)", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+%}
+
+### Non-existent book
+# @name uploadCoverNotFound
+POST {{baseUrl}}/books/cover/999999
+Authorization: Bearer {{token_user1}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="cover.jpg"
+Content-Type: image/jpeg
+
+< ./cover.jpg
+--WebAppBoundary--
+
+> {%
+    client.test("TIGHTEN ME: uploading a cover for a non-existent book returns an error", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### No auth
+# @name uploadCoverNoAuth
+POST {{baseUrl}}/books/cover/{{book7_id}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="cover.jpg"
+Content-Type: image/jpeg
+
+< ./cover.jpg
+--WebAppBoundary--
+
+> {%
+    client.test("Cover upload without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}

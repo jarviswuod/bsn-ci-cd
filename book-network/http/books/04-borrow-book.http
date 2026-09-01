@@ -1,0 +1,147 @@
+### ==========================================================
+### 04 — POST /books/borrow/{bookId}
+### Requires: 00-setup.http already run
+### Run this file's requests IN ORDER — later ones depend on earlier state.
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### Happy path — User2 borrows User1's shareable Book1
+# @name borrowBook1ByUser2
+POST {{baseUrl}}/books/borrow/{{book1_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("User2 successfully borrows Book1", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(typeof response.body === "number", "Expected a numeric transaction id");
+    });
+    client.global.set("book1_borrow_txn_id", response.body);
+%}
+
+### Owner tries to borrow their own book
+# @name borrowOwnBook
+POST {{baseUrl}}/books/borrow/{{book2_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("TIGHTEN ME: owner cannot borrow their own book", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Second user tries to borrow a book that's ALREADY borrowed
+# @name borrowAlreadyBorrowed
+POST {{baseUrl}}/books/borrow/{{book1_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("TIGHTEN ME: cannot borrow a book that's already borrowed by someone else", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Same user tries to borrow the SAME book twice — isAlreadyBorrowedByUser check
+# @name borrowSameBookTwiceBySameUser
+POST {{baseUrl}}/books/borrow/{{book1_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("TIGHTEN ME: same user cannot double-borrow the same book", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Borrow a non-shareable book (Book3)
+# @name borrowNonShareable
+POST {{baseUrl}}/books/borrow/{{book3_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("TIGHTEN ME: cannot borrow a non-shareable book", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Borrow a non-existent book
+# @name borrowNotFound
+POST {{baseUrl}}/books/borrow/999999
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("TIGHTEN ME: borrowing a non-existent book returns an error, not a 200", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### Borrow with no auth
+# @name borrowNoAuth
+POST {{baseUrl}}/books/borrow/{{book4_id}}
+
+> {%
+    client.test("Borrow without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}
+
+### Borrow with non-numeric id
+# @name borrowBadIdType
+POST {{baseUrl}}/books/borrow/abc
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("Borrow with non-numeric id rejected with 400", function() {
+        client.assert(response.status === 400, "Expected 400, got " + response.status);
+    });
+%}
+
+### --- Archived-book borrow rejection: archive Book6 first, then try to borrow it ---
+
+# @name archiveBook6ForBorrowTest
+PATCH {{baseUrl}}/books/archived/{{book6_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("User2 archives their own Book6 (setup step for the next test)", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+%}
+
+###
+# @name borrowArchivedBook
+POST {{baseUrl}}/books/borrow/{{book6_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("TIGHTEN ME: cannot borrow an archived book", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Restore Book6 to unarchived so other files aren't affected by this file's side effects
+# @name unarchiveBook6
+PATCH {{baseUrl}}/books/archived/{{book6_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("Book6 restored to unarchived (cleanup)", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+%}
+
+### Real user flow — User3 borrows a DIFFERENT book cleanly, for use in 05/06 files
+# @name borrowBook4ByUser3
+POST {{baseUrl}}/books/borrow/{{book4_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("User3 successfully borrows Book4 (feeds into 05-return-book.http)", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+    client.global.set("book4_borrow_txn_id", response.body);
+%}

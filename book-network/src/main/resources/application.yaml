@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: book-network
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 50MB
+
+springdoc:
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1/

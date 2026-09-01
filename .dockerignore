@@ -1,0 +1,20 @@
+# Backend build noise
+book-network/target/
+book-network/.mvn/
+book-network/mvnw
+book-network/mvnw.cmd
+book-network/http/
+book-network/HELP.md
+book-network/authentication.http
+
+# Frontend build noise
+book-network-ui/node_modules/
+book-network-ui/dist/
+book-network-ui/.angular/
+
+.git/
+.idea/
+uploads/
+*.iml
+.env
+.env.*

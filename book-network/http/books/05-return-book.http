@@ -1,0 +1,105 @@
+### ==========================================================
+### 05 — PATCH /books/borrow/return/{bookId}
+### Requires: 00-setup.http AND 04-borrow-book.http already run
+### (needs Book1 borrowed by User2, Book4 borrowed by User3)
+### Run this file's requests IN ORDER.
+### ==========================================================
+
+@baseUrl = http://localhost:8080/api/v1
+
+### The "returned a book they didn't borrow" case you specifically asked about —
+### User1 (owns Book1, never borrowed it) tries to return it.
+### Note: this actually trips the "cannot return your own book" branch first,
+### so see the next request for the true "never borrowed, not the owner either" case.
+# @name returnOwnBook
+PATCH {{baseUrl}}/books/borrow/return/{{book1_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("TIGHTEN ME: owner cannot return their own book", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### TRUE "didn't borrow it" case — User3 (neither owner nor borrower) tries to return Book1
+# @name returnBookNeverBorrowedByThisUser
+PATCH {{baseUrl}}/books/borrow/return/{{book1_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("TIGHTEN ME: user who never borrowed this book cannot return it", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+    });
+%}
+
+### Happy path — User2 returns the book they actually borrowed (Book1)
+# @name returnBook1HappyPath
+PATCH {{baseUrl}}/books/borrow/return/{{book1_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("User2 successfully returns Book1", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+        client.assert(response.body === client.global.get("book1_borrow_txn_id"), "Expected the same transaction id to be updated");
+    });
+%}
+
+### BUG CHECK — return the SAME book again after it was already returned.
+### Nothing in returnedBorrowedBook() checks the current `returned` flag before setting it,
+### so expect this to silently succeed a second time instead of erroring.
+# @name returnBook1AgainAfterAlreadyReturned
+PATCH {{baseUrl}}/books/borrow/return/{{book1_id}}
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("BUG CHECK: double-return currently likely succeeds silently — should probably be rejected", function() {
+        client.log("Status: " + response.status + " body: " + JSON.stringify(response.body));
+        // No hard assert — documents a gap. Flip to `client.assert(response.status >= 400, ...)`
+        // once you add a guard against re-returning an already-returned book.
+    });
+%}
+
+### Return a book the caller never borrowed AND never owned at all (clean, unrelated case)
+# @name returnUnrelatedBook
+PATCH {{baseUrl}}/books/borrow/return/{{book7_id}}
+Authorization: Bearer {{token_user1}}
+
+> {%
+    client.test("TIGHTEN ME: returning a book with zero borrow/owner relationship is rejected", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### Non-existent book
+# @name returnNotFound
+PATCH {{baseUrl}}/books/borrow/return/999999
+Authorization: Bearer {{token_user2}}
+
+> {%
+    client.test("TIGHTEN ME: returning a non-existent book returns an error, not a 200", function() {
+        client.assert(response.status >= 400, "Expected an error status, got " + response.status);
+    });
+%}
+
+### No auth
+# @name returnNoAuth
+PATCH {{baseUrl}}/books/borrow/return/{{book4_id}}
+
+> {%
+    client.test("Return without auth is rejected", function() {
+        client.assert(response.status === 403, "Expected 403, got " + response.status);
+    });
+%}
+
+### Real flow continuation — User3 returns Book4 cleanly (feeds into 06-approve-return.http)
+# @name returnBook4ByUser3
+PATCH {{baseUrl}}/books/borrow/return/{{book4_id}}
+Authorization: Bearer {{token_user3}}
+
+> {%
+    client.test("User3 successfully returns Book4 (feeds into 06-approve-return.http)", function() {
+        client.assert(response.status === 200, "Expected 200, got " + response.status);
+    });
+%}

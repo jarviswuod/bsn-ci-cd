@@ -1,0 +1,83 @@
+<h3>My Books list</h3>
+<hr />
+<div class="d-flex justify-content-end mb-3">
+  <a routerLink="/books/manage" class="btn btn-outline-primary">
+    <i class="fas fa-plus">&nbsp; New book</i>
+  </a>
+</div>
+<div class="d-flex justify-content-sm-start gap-2 flex-wrap">
+  @for (book of bookResponse().content ?? []; track book.id) {
+    <app-book-card
+      [book]="book"
+      [manage]="true"
+      (archive)="archiveBook($event)"
+      (share)="shareBook($event)"
+      (edit)="editBook($event)"
+    >
+      {{ book.title }}
+    </app-book-card>
+  }
+</div>
+<div class="d-flex justify-content-center mt-3">
+  <nav aria-label="Page navigation example">
+    <ul class="pagination">
+      <li class="page-item">
+        <a
+          (click)="goToFirstPage()"
+          class="page-link"
+          href="javascript:void(0)"
+          arial-label="First page"
+          [class.disabled]="page == 0"
+        >
+          <i class="fa-solid fa-angles-left"></i>
+        </a>
+      </li>
+      <li class="page-item">
+        <a
+          (click)="goToPreviousPage()"
+          class="page-link"
+          href="javascript:void(0)"
+          arial-label="Previous"
+          [class.disabled]="page == 0"
+        >
+          <i class="fa-solid fa-angle-left"></i>
+        </a>
+      </li>
+      @for (_ of [].constructor(this.bookResponse().totalPages); track $index) {
+        <li class="page-item">
+          <a
+            (click)="goToPage($index)"
+            class="page-link"
+            href="javascript:void(0)"
+            [attr.aria-label]="'Page Number ' + ($index + 1)"
+            [class.active]="page == $index"
+          >
+            {{ $index + 1 }}
+          </a>
+        </li>
+      }
+      <li class="page-item">
+        <a
+          (click)="goToNextPage()"
+          class="page-link"
+          href="javascript:void(0)"
+          arial-label="Next"
+          [class.disabled]="isLastPage"
+        >
+          <i class="fa-solid fa-chevron-right"></i>
+        </a>
+      </li>
+      <li class="page-item">
+        <a
+          (click)="goToLastPage()"
+          class="page-link"
+          href="javascript:void(0)"
+          arial-label="Last page"
+          [class.disabled]="isLastPage"
+        >
+          <i class="fa-solid fa-angles-right"></i>
+        </a>
+      </li>
+    </ul>
+  </nav>
+</div>
