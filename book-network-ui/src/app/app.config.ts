@@ -14,6 +14,6 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideClientHydration(),
     provideHttpClient(withInterceptors([httpTokenInterceptor])),
-    provideApiConfiguration('http://192.168.0.227:8090/api/v1'),
+    provideApiConfiguration('http://192.168.100.18:8090/api/v1'),
   ],
 };
