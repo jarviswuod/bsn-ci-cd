@@ -3,7 +3,7 @@ name: BSN Frontend UI Pipeline
 on:
   push:
     branches:
-      - ci/pipeline
+      - main
     paths:
       - book-network-ui/**
       - docker/frontend/**
