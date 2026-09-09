@@ -35,14 +35,11 @@ jobs:
       - name: Build & Push to DockerHub
         uses: docker/build-push-action@v5
         with:
-          context: book-network
-          file: docker/backend/Dockerfile
+          context: .
+          file: docker/frontend/Dockerfile
           push: 'true'
           platforms: linux/amd64
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/bsn-ui:${{ steps.extract_version.outputs.VERSION }},${{ secrets.DOCKERHUB_USERNAME }}/bsn-ui:latest
-          build-args: |
-            PROFILE=dev
-            APP_VERSION=${{ steps.extract_version.outputs.VERSION }}
 
 
   deploy:
@@ -54,12 +51,13 @@ jobs:
         run: ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP }} "mkdir -p ci-cd"
 
       - name: Copy docker-compose file
-        run: scp docker-compose.yml ${{ secrets.VPS_USERNAME }}@{{ secrets.VPS_IP }}:ci-cd/docker-compose.yml
+        run: scp docker-compose.yml ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP }}:ci-cd/docker-compose.yml
 
       - name: Set ENV variables and deploy
         run: |
-          ssh ${{ secrets.VPN_USERNAME }}@${{ secrets.VPS_IP }} <<EOF
+          ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_IP }} <<EOF
+          export DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
           cd ci-cd
-          docker-compose -f docker-compose.yml pull -q
-          docker-compose -f docker-compose.yml up -d
+          docker compose -f docker-compose.yml pull -q
+          docker compose -f docker-compose.yml up -d
           EOF
